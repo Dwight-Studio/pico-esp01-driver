@@ -35,7 +35,7 @@ pico_sdk_init()
 pico_esp01_driver_init()
 
 add_executable(test main.c)
-target_link_libraries(test esp01)
+target_link_libraries(test pico_stdlib esp01)
 pico_add_extra_outputs(test)
 ```
 
