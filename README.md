@@ -10,7 +10,7 @@ The driver can be imported using a cmake script (similar to the [`pico-sdk`](htt
 
 Here is a simple quick start guide:
 
-1. Setup the [`pico-sdk`](https://github.com/raspberrypi/pico-sdk/) for your project
+1. Setup the `pico-sdk` for your project
 2. Clone this repository
 3. Download `pico_esp01_driver_import.cmake` and put it along with `pico_sdk_import.cmake` (in the root folder of your
    project)
