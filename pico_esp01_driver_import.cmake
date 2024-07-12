@@ -21,7 +21,7 @@ if (NOT PICO_ESP01_DRIVER_PATH)
         endif ()
         FetchContent_Declare(
                 PICO_ESP01
-                GIT_REPOSITORY https://github.com/deleranax/pico-esp01-driver
+                GIT_REPOSITORY https://github.com/Dwight-Studio/pico-esp01-driver
                 GIT_TAG main
         )
         if (NOT PICO_ESP01)
