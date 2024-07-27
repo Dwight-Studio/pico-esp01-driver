@@ -34,9 +34,9 @@
 #define AT_SLEEP_CFG "AT+SLEEP"         // [X] Set the sleep mode.
 #define AT_DEEP_SLEEP "AT+GSLP"         // [X] Enter Deep-sleep mode.
 #define AT_FACTORY_RESET "AT+RESTORE"   // [X] Restore factory default settings of the module.
-#define AT_UART_CURRENT "AT+UART_CUR"   // [X] Current UART configuration, not saved in flash.
-#define AT_UART_DEFAULT "AT+UART_DEF"   // [ ] Default UART configuration, saved in flash.
-#define AT_STORE_MODE "AT+SYSSTORE"     // [~] Query/Set parameter store mode.
+#define AT_UART_CURRENT "AT+UART_CUR"   // [X] Current UART Configuration, Not Saved in Flash.
+#define AT_UART_DEFAULT "AT+UART_DEF"   // [X] Default UART Configuration, Saved in Flash
+#define AT_STORE_MODE "AT+SYSSTORE"     // [X] Query/Set parameter store mode.
 #define AT_PROMPT_CFG "AT+SYSMSG"       // [ ] Query/Set System Prompt Information.
 
 // Wifi
@@ -264,18 +264,20 @@ bool esp01_factory_reset(esp01_inst_t *inst);
  *
  * @param inst Pointer to the communication instance
  * @param uart_set Pointer to the variable used to store the result
+ * @param current True if it should read the current configuration, False to read the default configuration
  * @return True if the command was successfully executed, false otherwise
  */
-bool esp01_get_uart_settings(esp01_inst_t *inst, esp01_uart_settings_t *uart_set);
+bool esp01_get_uart_settings(esp01_inst_t *inst, esp01_uart_settings_t *uart_set, bool current);
 
 /*!
  * Set current UART settings.
  *
  * @param inst Pointer to the communication instance
  * @param uart_set New UART settings
+ * @param current True if it should alter the current configuration, False to alter the default configuration
  * @return True if the command was successfully executed, false otherwise
  */
-bool esp01_set_uart_settings(esp01_inst_t *inst, esp01_uart_settings_t uart_set);
+bool esp01_set_uart_settings(esp01_inst_t *inst, esp01_uart_settings_t uart_set, bool current);
 
 /*!
  * Get store mode.

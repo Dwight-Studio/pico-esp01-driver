@@ -1,6 +1,6 @@
 #include "esp01.h"
 
-#define DEBUG
+#define ESP01_DRIVER_DEBUG
 
 void esp01_setup_default_uart(uart_inst_t *uart_inst) {
     uart_set_format(uart_inst, ESP01_DEFAULT_DATA_BITS, ESP01_DEFAULT_STOP_BITS, ESP01_DEFAULT_PARITY);
@@ -82,8 +82,6 @@ char *esp01_at_cmd(esp01_inst_t *inst, uint timeout_ms, char cmd_mode, char *lab
         for (int i = 0; i < strnlen(param, ESP01_CMD_LENGTH); i++) {
             c = param[i];
             if (c == '\r' || c == '\n') {
-                *cmd = '\r';
-                cmd++;
                 *cmd = '\n';
                 cmd++;
                 *cmd = '\0';
@@ -99,7 +97,7 @@ char *esp01_at_cmd(esp01_inst_t *inst, uint timeout_ms, char cmd_mode, char *lab
 
     va_end(args);
 
-#ifdef DEBUG
+#ifdef ESP01_DRIVER_DEBUG
     printf(">%s", o_cmd);
 #endif
 
@@ -111,18 +109,27 @@ char *esp01_at_cmd(esp01_inst_t *inst, uint timeout_ms, char cmd_mode, char *lab
         *rsp = '\0';
 
         // Send command
-        for (char *c = o_cmd; c <= cmd; c++) {
+        for (char *c = o_cmd; c < cmd; c++) {
+            if (*c == '\n') {
+                uart_putc(inst->uart_inst, '\r');
+            }
             uart_putc(inst->uart_inst, *c);
         }
 
         // Concatenate the response until it reaches a termination word (OK/ERROR)
         while (uart_is_readable_within_us(inst->uart_inst, timeout_ms * 1000)) {
             *rsp = uart_getc(inst->uart_inst);
+            if (*rsp == '\0' || *rsp == '\r') {
+                continue;
+            }
+#ifdef ESP01_DRIVER_DEBUG
+            putchar(*rsp);
+#endif
             rsp++;
 
             // Return if the response overflows
             if (rsp - o_rsp >= ESP01_RSP_LENGTH) {
-#ifdef DEBUG
+#ifdef ESP01_DRIVER_DEBUG
                 printf("Response overflow!\n");
 #endif
                 return NULL;
@@ -132,21 +139,21 @@ char *esp01_at_cmd(esp01_inst_t *inst, uint timeout_ms, char cmd_mode, char *lab
 
             // Check for termination word
             if (*(rsp - 1) == '\n') {
-                if (strstr(o_rsp, o_cmd)) {
+                if (strstr(o_rsp, o_cmd) != NULL) {
                     rsp = o_rsp;
-                }
-                if ((strstr(o_rsp, "\r\nOK\r\n") != NULL) || (strstr(o_rsp, "\r\nERROR\r\n") != NULL)) {
+                    *rsp = '\0';
+                } else if ((strstr(o_rsp, "\nOK\n") != NULL) || (strstr(o_rsp, "\nERROR\n") != NULL)) {
                     // Reallocate to free memory
-                    return realloc(o_rsp, strlen(o_rsp) + 1);
+                    return realloc(o_rsp, rsp - o_rsp + 1);
                 }
             }
         }
-#ifdef DEBUG
+#ifdef ESP01_DRIVER_DEBUG
         printf("Timeout!\n");
 #endif
         return NULL;
     } else {
-#ifdef DEBUG
+#ifdef ESP01_DRIVER_DEBUG
         printf("UART not writeable!\n");
 #endif
         return NULL;
@@ -160,7 +167,7 @@ bool esp01_rsp_ok(char *rsp) {
     }
 
     // Check for OK
-    if (strstr(rsp, "\r\nOK\r\n") != NULL) {
+    if (strstr(rsp, "\nOK\n") != NULL) {
         return true;
     }
 
@@ -176,7 +183,7 @@ bool esp01_rsp_ok_free(char *rsp) {
     }
 
     // Check for OK
-    if (strstr(rsp, "\r\nOK\r\n") != NULL) {
+    if (strstr(rsp, "\nOK\n") != NULL) {
         free(rsp);
         return true;
     }
@@ -207,13 +214,17 @@ bool esp01_get_version(esp01_inst_t *inst, esp01_version_t *ver) {
 
         *(ver->at) = *(ver->sdk) = *(ver->bin) = '\0';
 
-        sscanf(rsp, "AT version:%[^\r\n]", ver->at);
-        rsp = strstr(rsp, "\r\n") + 2;
+        sscanf(rsp, "AT version:%[^\n]", ver->at);
+        rsp = strstr(rsp, "\n") + 1;
 
-        sscanf(rsp, "SDK version:%[^\r\n]", ver->sdk);
-        rsp = strstr(rsp, "\r\n") + 2;
+        sscanf(rsp, "SDK version:%[^\n]", ver->sdk);
+        rsp = strstr(rsp, "\n") + 1;
 
-        sscanf(rsp, "compile time:%[^\r\n]", ver->bin);
+        if (strstr(rsp, "\n") != NULL) {
+            rsp = strstr(rsp, "\n") + 1;
+        }
+
+        sscanf(rsp, "Bin version:%[^\n]", ver->bin);
 
         free(o_rsp);
         return true;
@@ -294,14 +305,14 @@ bool esp01_factory_reset(esp01_inst_t *inst) {
     return esp01_rsp_ok_free(rsp);
 }
 
-bool esp01_get_uart_settings(esp01_inst_t *inst, esp01_uart_settings_t *uart_set) {
-    char *rsp = esp01_at_cmd(inst, ESP01_DEFAULT_TIMEOUT, AT_QUERY, AT_UART_CURRENT, "\n");
+bool esp01_get_uart_settings(esp01_inst_t *inst, esp01_uart_settings_t *uart_set, bool current) {
+    char *rsp = esp01_at_cmd(inst, ESP01_DEFAULT_TIMEOUT, AT_QUERY, current ? AT_UART_CURRENT : AT_UART_DEFAULT, "\n");
 
     if (esp01_rsp_ok(rsp)) {
         uint parity;
         uint flow_control;
 
-        sscanf(rsp, "+UART_CUR:%u,%u,%u,%u,%u", &(uart_set->baud_rate), &(uart_set->data_bits), &(uart_set->stop_bits),
+        sscanf(rsp, current ? "+UART_CUR:%u,%u,%u,%u,%u" : "+UART_DEF:%u,%u,%u,%u,%u", &(uart_set->baud_rate), &(uart_set->data_bits), &(uart_set->stop_bits),
                &parity, &flow_control);
 
         free(rsp);
@@ -317,6 +328,7 @@ bool esp01_get_uart_settings(esp01_inst_t *inst, esp01_uart_settings_t *uart_set
                 uart_set->parity = UART_PARITY_EVEN;
                 break;
             default:
+                printf("%u", parity);
                 return false;
         }
 
@@ -348,7 +360,7 @@ bool esp01_get_uart_settings(esp01_inst_t *inst, esp01_uart_settings_t *uart_set
     }
 }
 
-bool esp01_set_uart_settings(esp01_inst_t *inst, esp01_uart_settings_t uart_set) {
+bool esp01_set_uart_settings(esp01_inst_t *inst, esp01_uart_settings_t uart_set, bool current) {
     uint parity;
     switch (uart_set.parity) {
         case UART_PARITY_NONE:
@@ -375,7 +387,7 @@ bool esp01_set_uart_settings(esp01_inst_t *inst, esp01_uart_settings_t uart_set)
     char cmd[ESP01_CMD_LENGTH];
     sprintf(cmd, "%u,%u,%u,%u,%u", uart_set.baud_rate, uart_set.data_bits, uart_set.stop_bits, parity, flow_control);
 
-    char *rsp = esp01_at_cmd(inst, ESP01_DEFAULT_TIMEOUT, AT_SET, AT_UART_CURRENT, cmd, "\n");
+    char *rsp = esp01_at_cmd(inst, ESP01_DEFAULT_TIMEOUT, AT_SET, current ? AT_UART_CURRENT : AT_UART_DEFAULT, cmd, "\n");
     return esp01_rsp_ok_free(rsp);
 }
 
@@ -383,7 +395,9 @@ bool esp01_get_store_mode(esp01_inst_t *inst, bool *mode) {
     char *rsp = esp01_at_cmd(inst, ESP01_DEFAULT_TIMEOUT, AT_QUERY, AT_STORE_MODE, "\n");
 
     if (esp01_rsp_ok(rsp)) {
-        sscanf(rsp, "+SYSSTORE:%d", (int *)mode);
+        uint m;
+        sscanf(rsp, "+SYSSTORE:%u", &m);
+        *mode = m;
         free(rsp);
         return true;
     } else {
